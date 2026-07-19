@@ -191,7 +191,7 @@ def _update_context(values: dict[str, Any], context: dict[str, Any]) -> dict[str
 
 def _iter_records(file_bytes: bytes) -> Iterator[tuple[dict[str, Any], bool, bool]]:
     """Yield (record, is_header_row, is_empty_row) tuples."""
-    wb = load_workbook(filename=io.BytesIO(file_bytes), read_only=False, data_only=True)
+    wb = load_workbook(filename=io.BytesIO(file_bytes), read_only=True, data_only=True)
     try:
         ws = wb.active
         context: dict[str, Any] = {}
@@ -238,7 +238,7 @@ def import_excel(conn: Any, file_bytes: bytes) -> ImportResult:
     total_amount = Decimal("0")
 
     batch: list[dict[str, Any]] = []
-    BATCH_SIZE = 200
+    BATCH_SIZE = 500
 
     try:
         cursor.execute("TRUNCATE TABLE coffee_orders")

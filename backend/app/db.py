@@ -54,6 +54,17 @@ def _column_exists(cur, table: str, column: str) -> bool:
     return cur.fetchone() is not None
 
 
+def _index_exists(cur, table: str, index_name: str) -> bool:
+    cur.execute(
+        """
+        SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s
+        """,
+        (table, index_name),
+    )
+    return cur.fetchone() is not None
+
+
 def ensure_schema() -> None:
     """Idempotent schema migration: add new columns / tables if missing.
 
@@ -81,6 +92,22 @@ def ensure_schema() -> None:
         if not _column_exists(cur, "coffee_orders", "discount_amount"):
             cur.execute("ALTER TABLE coffee_orders ADD COLUMN discount_amount DECIMAL(12, 2)")
             logger.info("Added column coffee_orders.discount_amount")
+
+        if not _index_exists(cur, "coffee_orders", "idx_order_header_date"):
+            cur.execute("CREATE INDEX idx_order_header_date ON coffee_orders (is_order_header, order_date)")
+            logger.info("Added index idx_order_header_date")
+        if not _index_exists(cur, "coffee_orders", "idx_order_source"):
+            cur.execute("CREATE INDEX idx_order_source ON coffee_orders (is_order_header, order_source)")
+            logger.info("Added index idx_order_source")
+        if not _index_exists(cur, "coffee_orders", "idx_member_no"):
+            cur.execute("CREATE INDEX idx_member_no ON coffee_orders (is_order_header, member_no)")
+            logger.info("Added index idx_member_no")
+        if not _index_exists(cur, "coffee_orders", "idx_platform_order_no"):
+            cur.execute("CREATE INDEX idx_platform_order_no ON coffee_orders (platform_order_no)")
+            logger.info("Added index idx_platform_order_no")
+        if not _index_exists(cur, "coffee_orders", "idx_is_xiaocan"):
+            cur.execute("CREATE INDEX idx_is_xiaocan ON coffee_orders (is_xiaocan)")
+            logger.info("Added index idx_is_xiaocan")
 
         cur.execute(
             """

@@ -111,10 +111,10 @@ const client: AxiosInstance = axios.create({
   timeout: 120_000,
 })
 
-export async function uploadExcel(file: File, onProgress?: (pct: number) => void): Promise<ImportResult> {
+export async function uploadExcel(file: File, onProgress?: (pct: number) => void): Promise<TaskResult> {
   const form = new FormData()
   form.append('file', file)
-  const res = await client.post<ImportResult>('/upload', form, {
+  const res = await client.post<TaskResult>('/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (e) => {
       if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
@@ -225,10 +225,10 @@ export async function fetchActualReceivedTrend(): Promise<ActualReceivedTrend> {
 export async function uploadXiaocanExcel(
   file: File,
   onProgress?: (pct: number) => void,
-): Promise<XiaocanImportResult> {
+): Promise<TaskResult> {
   const form = new FormData()
   form.append('file', file)
-  const res = await client.post<XiaocanImportResult>('/xiaocan/upload', form, {
+  const res = await client.post<TaskResult>('/xiaocan/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (e) => {
       if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
@@ -284,5 +284,33 @@ export async function deleteXiaocanRebate(id: number): Promise<{ deleted: number
 
 export async function deleteAllXiaocanRebates(): Promise<{ deleted: number }> {
   const res = await client.delete<{ deleted: number }>('/xiaocan/rebates')
+  return res.data
+}
+
+export interface TaskResult {
+  task_id: string
+  status: string
+  message: string
+  progress: number
+  result: Record<string, any> | null
+  error: string | null
+}
+
+export async function fetchTaskStatus(taskId: string): Promise<TaskResult> {
+  const res = await client.get<TaskResult>(`/tasks/${taskId}`)
+  return res.data
+}
+
+export interface DashboardData {
+  stats: Stats
+  daily_trend: DailyTrend
+  natural_trend: NaturalTrend
+  actual_received_trend: ActualReceivedTrend
+}
+
+export async function fetchDashboard(date_from?: string, date_to?: string): Promise<DashboardData> {
+  const res = await client.get<DashboardData>('/orders/dashboard', {
+    params: { date_from, date_to },
+  })
   return res.data
 }

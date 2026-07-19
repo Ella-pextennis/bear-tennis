@@ -29,12 +29,17 @@
       </el-upload>
 
       <el-progress
-        v-if="uploading || progress === 100"
+        v-if="uploading || polling || progress === 100"
         :percentage="progress"
         :status="progress === 100 ? 'success' : ''"
         :stroke-width="8"
         style="margin-top: 10px"
       />
+
+      <div v-if="polling" class="polling-text">
+        <el-icon><Loading /></el-icon>
+        {{ pollingText }}
+      </div>
 
       <el-alert
         v-if="result"
@@ -65,22 +70,24 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { UploadFilled } from '@element-plus/icons-vue'
+import { Loading, UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
-import { uploadXiaocanExcel, type XiaocanImportResult } from '../api'
+import { uploadXiaocanExcel, fetchTaskStatus, type TaskResult } from '../api'
 
-const emit = defineEmits<{ (e: 'imported', result: XiaocanImportResult): void }>()
+const emit = defineEmits<{ (e: 'imported', result: TaskResult): void }>()
 
 const activeNames = ref<string[]>([])
 const uploadRef = ref()
 const uploading = ref(false)
+const polling = ref(false)
 const progress = ref(0)
-const result = ref<XiaocanImportResult | null>(null)
+const result = ref<TaskResult | null>(null)
 const errorMsg = ref('')
+const pollingText = ref('')
 
 const successTitle = computed(() =>
-  result.value && result.value.matched_count > 0
+  result.value && result.value.result?.matched_count && result.value.result.matched_count > 0
     ? '导入成功，已匹配原订单'
     : '导入成功（无原订单匹配，请确认订单号格式一致）',
 )
@@ -101,25 +108,59 @@ function beforeUpload(file: File): boolean {
 
 async function customUpload(options: UploadRequestOptions) {
   uploading.value = true
+  polling.value = false
   progress.value = 0
   result.value = null
   errorMsg.value = ''
   try {
-    const res = await uploadXiaocanExcel(options.file as File, (pct) => {
+    const uploadRes = await uploadXiaocanExcel(options.file as File, (pct) => {
       progress.value = pct
     })
-    progress.value = 100
-    result.value = res
-    emit('imported', res)
-    ElMessage.success(
-      `导入完成：${res.total_rows} 行，匹配 ${res.matched_count} 单，未匹配 ${res.unmatched_count} 单`,
-    )
+
+    if (uploadRes.status === 'success') {
+      progress.value = 100
+      result.value = uploadRes
+      emit('imported', uploadRes)
+      ElMessage.success('导入完成')
+    } else {
+      await startPolling(uploadRes.task_id)
+    }
   } catch (err: any) {
     const detail = err?.response?.data?.detail || err?.message || '未知错误'
     errorMsg.value = `导入失败：${detail}`
     progress.value = 0
   } finally {
     uploading.value = false
+  }
+}
+
+async function startPolling(taskId: string) {
+  polling.value = true
+  pollingText.value = '正在处理，请稍候...'
+  try {
+    for (let i = 0; i < 120; i++) {
+      const status = await fetchTaskStatus(taskId)
+      progress.value = status.progress
+      pollingText.value = status.message || '处理中...'
+
+      if (status.status === 'success') {
+        progress.value = 100
+        result.value = status
+        emit('imported', status)
+        ElMessage.success(status.message || '导入完成')
+        break
+      }
+      if (status.status === 'failed') {
+        errorMsg.value = status.error || '导入失败'
+        progress.value = 0
+        break
+      }
+      await new Promise((r) => setTimeout(r, 1000))
+    }
+  } catch (err: any) {
+    errorMsg.value = `轮询失败：${err?.message || '未知错误'}`
+  } finally {
+    polling.value = false
   }
 }
 </script>
@@ -174,5 +215,13 @@ async function customUpload(options: UploadRequestOptions) {
   color: #606266;
   margin-right: 6px;
   font-weight: 500;
+}
+.polling-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #606266;
+  margin-top: 8px;
 }
 </style>

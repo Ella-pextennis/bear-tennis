@@ -11,9 +11,9 @@ class Settings(BaseSettings):
 
     db_host: str = "localhost"
     db_port: int = 3306
-    db_database: str = "coffee"
-    db_user: str = "coffee"
-    db_password: str = "coffee123"
+    db_database: str = "bear_coffee"
+    db_user: str = "bearuser"
+    db_password: str = "coffee@2026"
 
     host: str = "0.0.0.0"
     port: int = 8000

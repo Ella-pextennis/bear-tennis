@@ -1,18 +1,16 @@
-"""POST /api/upload - Excel ingestion endpoint."""
+"""POST /api/upload - Excel ingestion endpoint (async task)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 
-from ..db import get_conn
-from ..models import ImportResult
-from ..services.importer import import_excel
-from ..services.xiaocan_importer import update_xiaocan_marks
+from ..models import TaskResult
+from ..services.tasks import submit_coffee_import
 
 router = APIRouter()
 
 
-@router.post("/upload", response_model=ImportResult)
-async def upload_excel(request: Request, file: UploadFile = File(...)) -> ImportResult:
+@router.post("/upload", response_model=TaskResult)
+async def upload_excel(request: Request, file: UploadFile = File(...)) -> TaskResult:
     settings = request.app.state.settings
     max_bytes = settings.max_upload_mb * 1024 * 1024
 
@@ -28,16 +26,5 @@ async def upload_excel(request: Request, file: UploadFile = File(...)) -> Import
             detail=f"文件过大（{len(data) // 1024 // 1024}MB），上限 {settings.max_upload_mb}MB",
         )
 
-    conn = get_conn()
-    try:
-        result = import_excel(conn, data)
-        update_xiaocan_marks(conn)
-        conn.commit()
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Excel 解析失败：{e}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"导入失败：{e}")
-    finally:
-        conn.close()
-
-    return result
+    task_id = submit_coffee_import(data)
+    return TaskResult(task_id=task_id, status="pending", message="任务已提交，请轮询获取进度")

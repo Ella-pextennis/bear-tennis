@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -160,3 +160,22 @@ class XiaocanRebateList(BaseModel):
     items: List[XiaocanRebateItem] = Field(default_factory=list)
     total: int = 0
     total_amount: Optional[Decimal] = None
+
+
+class TaskResult(BaseModel):
+    task_id: str
+    status: str
+    message: str = ""
+    progress: float = 0.0
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+TaskResult.model_rebuild()
+
+
+class DashboardData(BaseModel):
+    stats: Stats
+    daily_trend: DailyTrend
+    natural_trend: NaturalTrend
+    actual_received_trend: ActualReceivedTrend

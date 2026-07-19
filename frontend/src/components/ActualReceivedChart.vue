@@ -61,6 +61,10 @@ async function load() {
   }
 }
 
+function updateData(data: { items: ActualReceivedTrendItem[] }) {
+  items.value = data.items ?? []
+}
+
 const loadingOptions = {
   text: '加载中...',
   color: '#16a085',
@@ -189,7 +193,7 @@ const chartOption = computed(() => {
   }
 })
 
-defineExpose({ refresh: load })
+defineExpose({ refresh: load, updateData })
 
 onMounted(load)
 </script>

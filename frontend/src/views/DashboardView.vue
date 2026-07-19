@@ -39,7 +39,7 @@ import XiaocanRebatePanel from '../components/XiaocanRebatePanel.vue'
 import DailyTrendChart from '../components/DailyTrendChart.vue'
 import NaturalTrendChart from '../components/NaturalTrendChart.vue'
 import ActualReceivedChart from '../components/ActualReceivedChart.vue'
-import { fetchStats, type Stats, type ImportResult, type XiaocanImportResult } from '../api'
+import { fetchDashboard, type Stats, type TaskResult } from '../api'
 
 const stats = ref<Stats>({
   total_rows: 0,
@@ -63,41 +63,39 @@ const trendRef = ref<InstanceType<typeof DailyTrendChart> | null>(null)
 const naturalTrendRef = ref<InstanceType<typeof NaturalTrendChart> | null>(null)
 const actualReceivedRef = ref<InstanceType<typeof ActualReceivedChart> | null>(null)
 
-async function loadStats() {
+async function loadDashboard() {
   statsLoading.value = true
   try {
-    stats.value = await fetchStats()
+    const data = await fetchDashboard()
+    stats.value = data.stats
+    trendRef.value?.updateData(data.daily_trend)
+    naturalTrendRef.value?.updateData(data.natural_trend)
+    actualReceivedRef.value?.updateData(data.actual_received_trend)
   } catch {
-    /* keep zeros */
+    /* keep existing data */
   } finally {
     statsLoading.value = false
   }
 }
 
-function onCoffeeImported(_result: ImportResult) {
-  loadStats()
+function onCoffeeImported(_result: TaskResult) {
+  loadDashboard()
   tableRef.value?.refresh()
-  trendRef.value?.refresh()
-  naturalTrendRef.value?.refresh()
-  actualReceivedRef.value?.refresh()
 }
 
-function onXiaocanImported(_result: XiaocanImportResult) {
-  loadStats()
+function onXiaocanImported(_result: TaskResult) {
+  loadDashboard()
   tableRef.value?.refresh()
   xiaocanTableRef.value?.refresh()
-  naturalTrendRef.value?.refresh()
-  actualReceivedRef.value?.refresh()
 }
 
 function onXiaocanDataChanged() {
-  loadStats()
+  loadDashboard()
   tableRef.value?.refresh()
-  actualReceivedRef.value?.refresh()
 }
 
 onMounted(() => {
-  loadStats()
+  loadDashboard()
   rebateRef.value?.refresh()
 })
 </script>

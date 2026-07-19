@@ -18,6 +18,8 @@ from ..models import (
     XiaocanRebateItem,
     XiaocanRebateList,
 )
+from ..models import TaskResult
+from ..services.tasks import submit_xiaocan_import
 from ..services.xiaocan_importer import import_xiaocan_excel, update_xiaocan_marks
 
 router = APIRouter()
@@ -41,8 +43,8 @@ def _dec(v) -> Optional[Decimal]:
     return Decimal(str(v))
 
 
-@router.post("/xiaocan/upload", response_model=XiaocanImportResult, tags=["xiaocan"])
-async def upload_xiaocan_excel(file: UploadFile = File(...)) -> XiaocanImportResult:
+@router.post("/xiaocan/upload", response_model=TaskResult, tags=["xiaocan"])
+async def upload_xiaocan_excel(file: UploadFile = File(...)) -> TaskResult:
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="仅支持 .xlsx / .xlsm 文件")
 
@@ -50,27 +52,8 @@ async def upload_xiaocan_excel(file: UploadFile = File(...)) -> XiaocanImportRes
     if not data:
         raise HTTPException(status_code=400, detail="上传文件为空")
 
-    # Save a debug copy for header inspection
-    try:
-        debug_path = "/tmp/xiaocan_debug.xlsx"
-        with open(debug_path, "wb") as f:
-            f.write(data)
-        import logging
-        logging.getLogger(__name__).info("Saved xiaocan debug copy to %s", debug_path)
-    except Exception:
-        pass
-
-    conn = get_conn()
-    try:
-        result = import_xiaocan_excel(conn, data)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Excel 解析失败：{e}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"导入失败：{e}")
-    finally:
-        conn.close()
-
-    return result
+    task_id = submit_xiaocan_import(data)
+    return TaskResult(task_id=task_id, status="pending", message="任务已提交，请轮询获取进度")
 
 
 @router.get("/xiaocan/orders", response_model=XiaocanOrdersPage, tags=["xiaocan"])

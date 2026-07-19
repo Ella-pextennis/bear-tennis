@@ -1,20 +1,20 @@
-"""GET /api/orders/stats - dashboard summary."""
+"""GET /api/orders/stats - dashboard summary with caching."""
 from __future__ import annotations
 
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Dict
+from typing import Dict, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from ..db import get_conn
-from ..models import ActualReceivedTrend, ActualReceivedTrendItem, DailyTrend, DailyTrendItem, NaturalTrend, NaturalTrendItem, Stats
+from ..models import ActualReceivedTrend, ActualReceivedTrendItem, DailyTrend, DailyTrendItem, DashboardData, NaturalTrend, NaturalTrendItem, Stats
+from ..services.cache import get_cache, invalidate_cache, set_cache
 
 router = APIRouter()
 
 
-@router.get("/orders/stats", response_model=Stats)
-def get_stats() -> Stats:
+def _compute_stats() -> Stats:
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -77,7 +77,6 @@ def get_stats() -> Stats:
         cur.execute("SELECT COUNT(*) FROM xiaocan_orders")
         xiaocan_orders_count = cur.fetchone()[0] or 0
 
-        # Natural online orders = meituan + eleme - xiaocan_total
         meituan_count = sum(
             cnt for src, cnt in source_breakdown.items() if "美团" in src
         )
@@ -125,6 +124,16 @@ def get_stats() -> Stats:
     )
 
 
+@router.get("/orders/stats", response_model=Stats)
+def get_stats() -> Stats:
+    cached = get_cache("stats")
+    if cached:
+        return cached
+    result = _compute_stats()
+    set_cache("stats", result)
+    return result
+
+
 def _classify_source(source: str) -> str:
     """Return 'meituan', 'eleme', or 'other' for a given order source string."""
     if not source:
@@ -137,25 +146,42 @@ def _classify_source(source: str) -> str:
 
 
 @router.get("/orders/stats/daily-trend", response_model=DailyTrend, tags=["stats"])
-def get_daily_trend() -> DailyTrend:
+def get_daily_trend(
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+) -> DailyTrend:
     """Daily order counts split by channel bucket (meituan / eleme / other).
 
     Only order-header rows (is_order_header=1) with non-null order_date and
     order_source are counted. Dates are returned in ascending order.
     """
+    cache_key = f"daily_trend_{date_from}_{date_to}"
+    cached = get_cache(cache_key)
+    if cached:
+        return cached
+
+    filters = ["is_order_header = 1", "order_date IS NOT NULL", "order_source IS NOT NULL"]
+    params: dict[str, object] = {}
+    if date_from:
+        filters.append("order_date >= %(date_from)s")
+        params["date_from"] = date_from
+    if date_to:
+        filters.append("order_date < DATE_ADD(%(date_to)s, INTERVAL 1 DAY)")
+        params["date_to"] = date_to
+    where = "WHERE " + " AND ".join(filters)
+
     conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             SELECT DATE(order_date), order_source, COUNT(DISTINCT order_no)
             FROM coffee_orders
-            WHERE is_order_header = 1
-              AND order_date IS NOT NULL
-              AND order_source IS NOT NULL
+            {where}
             GROUP BY DATE(order_date), order_source
             ORDER BY DATE(order_date) ASC
-            """
+            """,
+            params,
         )
         rows = cur.fetchall()
         cur.close()
@@ -184,41 +210,71 @@ def get_daily_trend() -> DailyTrend:
         item.detail[src_name] = item.detail.get(src_name, 0) + (cnt or 0)
 
     items = [by_date[k] for k in sorted(by_date.keys())]
-    return DailyTrend(items=items)
+    result = DailyTrend(items=items)
+    set_cache(cache_key, result)
+    return result
 
 
 @router.get("/orders/stats/natural-trend", response_model=NaturalTrend, tags=["stats"])
-def get_natural_trend() -> NaturalTrend:
+def get_natural_trend(
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+) -> NaturalTrend:
     """Daily natural online order counts.
 
     natural = meituan + eleme - xiaocan (per day).
     Meituan/eleme from coffee_orders, xiaocan from xiaocan_orders.
     """
+    cache_key = f"natural_trend_{date_from}_{date_to}"
+    cached = get_cache(cache_key)
+    if cached:
+        return cached
+
+    filters = ["is_order_header = 1", "order_date IS NOT NULL", "order_source IS NOT NULL"]
+    params: dict[str, object] = {}
+    if date_from:
+        filters.append("order_date >= %(date_from)s")
+        params["date_from"] = date_from
+    if date_to:
+        filters.append("order_date < DATE_ADD(%(date_to)s, INTERVAL 1 DAY)")
+        params["date_to"] = date_to
+    where = "WHERE " + " AND ".join(filters)
+
+    xiaocan_params = {}
+    xiaocan_filters = ["order_time IS NOT NULL"]
+    if date_from:
+        xiaocan_filters.append("order_time >= %(date_from)s")
+        xiaocan_params["date_from"] = date_from
+    if date_to:
+        xiaocan_filters.append("order_time < DATE_ADD(%(date_to)s, INTERVAL 1 DAY)")
+        xiaocan_params["date_to"] = date_to
+    xiaocan_where = "WHERE " + " AND ".join(xiaocan_filters)
+
     conn = get_conn()
     try:
         cur = conn.cursor()
 
         cur.execute(
-            """
+            f"""
             SELECT DATE(order_date), order_source, COUNT(DISTINCT order_no)
             FROM coffee_orders
-            WHERE is_order_header = 1
-              AND order_date IS NOT NULL
-              AND order_source IS NOT NULL
+            {where}
             GROUP BY DATE(order_date), order_source
             ORDER BY DATE(order_date) ASC
-            """
+            """,
+            params,
         )
         coffee_rows = cur.fetchall()
 
         cur.execute(
-            """
+            f"""
             SELECT DATE(order_time), COUNT(*)
             FROM xiaocan_orders
-            WHERE order_time IS NOT NULL
+            {xiaocan_where}
             GROUP BY DATE(order_time)
             ORDER BY DATE(order_time) ASC
-            """
+            """,
+            xiaocan_params,
         )
         xiaocan_rows = cur.fetchall()
         cur.close()
@@ -269,40 +325,71 @@ def get_natural_trend() -> NaturalTrend:
         item.natural = item.meituan + item.eleme - item.xiaocan
 
     items = [by_date[k] for k in sorted(by_date.keys())]
-    return NaturalTrend(items=items)
+    result = NaturalTrend(items=items)
+    set_cache(cache_key, result)
+    return result
 
 
 @router.get("/orders/stats/actual-received-trend", response_model=ActualReceivedTrend, tags=["stats"])
-def get_actual_received_trend() -> ActualReceivedTrend:
+def get_actual_received_trend(
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+) -> ActualReceivedTrend:
     """Daily actual received amount trend.
 
     actual_received = total_amount - rebate_amount (per day).
     Total amount from coffee_orders order headers, rebate from xiaocan_rebate_settlements.
     """
+    cache_key = f"actual_received_trend_{date_from}_{date_to}"
+    cached = get_cache(cache_key)
+    if cached:
+        return cached
+
+    filters = ["is_order_header = 1", "order_date IS NOT NULL"]
+    params: dict[str, object] = {}
+    if date_from:
+        filters.append("order_date >= %(date_from)s")
+        params["date_from"] = date_from
+    if date_to:
+        filters.append("order_date < DATE_ADD(%(date_to)s, INTERVAL 1 DAY)")
+        params["date_to"] = date_to
+    where = "WHERE " + " AND ".join(filters)
+
+    rebate_params = {}
+    rebate_filters = ["settle_date IS NOT NULL"]
+    if date_from:
+        rebate_filters.append("settle_date >= %(date_from)s")
+        rebate_params["date_from"] = date_from
+    if date_to:
+        rebate_filters.append("settle_date <= %(date_to)s")
+        rebate_params["date_to"] = date_to
+    rebate_where = "WHERE " + " AND ".join(rebate_filters)
+
     conn = get_conn()
     try:
         cur = conn.cursor()
 
         cur.execute(
-            """
+            f"""
             SELECT DATE(order_date), IFNULL(SUM(amount), 0)
             FROM coffee_orders
-            WHERE is_order_header = 1
-              AND order_date IS NOT NULL
+            {where}
             GROUP BY DATE(order_date)
             ORDER BY DATE(order_date) ASC
-            """
+            """,
+            params,
         )
         coffee_rows = cur.fetchall()
 
         cur.execute(
-            """
+            f"""
             SELECT settle_date, IFNULL(SUM(amount), 0)
             FROM xiaocan_rebate_settlements
-            WHERE settle_date IS NOT NULL
+            {rebate_where}
             GROUP BY settle_date
             ORDER BY settle_date ASC
-            """
+            """,
+            rebate_params,
         )
         rebate_rows = cur.fetchall()
         cur.close()
@@ -347,4 +434,32 @@ def get_actual_received_trend() -> ActualReceivedTrend:
         item.actual_received = item.total_amount - item.rebate_amount
 
     items = [by_date[k] for k in sorted(by_date.keys())]
-    return ActualReceivedTrend(items=items)
+    result = ActualReceivedTrend(items=items)
+    set_cache(cache_key, result)
+    return result
+
+
+@router.get("/orders/dashboard", response_model=DashboardData, tags=["stats"])
+def get_dashboard(
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+) -> DashboardData:
+    """Combined dashboard data - reduces multiple API calls to one."""
+    cache_key = f"dashboard_{date_from}_{date_to}"
+    cached = get_cache(cache_key)
+    if cached:
+        return cached
+
+    stats = _compute_stats()
+    daily_trend = get_daily_trend(date_from, date_to)
+    natural_trend = get_natural_trend(date_from, date_to)
+    actual_received_trend = get_actual_received_trend(date_from, date_to)
+
+    result = DashboardData(
+        stats=stats,
+        daily_trend=daily_trend,
+        natural_trend=natural_trend,
+        actual_received_trend=actual_received_trend,
+    )
+    set_cache(cache_key, result)
+    return result

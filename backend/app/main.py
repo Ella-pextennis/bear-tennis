@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .db import close_pool, ensure_schema, init_pool
 from .models import HealthCheck
-from .routes import orders, stats, upload, xiaocan
+from .routes import orders, stats, tasks, upload, xiaocan
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(orders.router, prefix="/api", tags=["orders"])
 app.include_router(stats.router, prefix="/api", tags=["stats"])
 app.include_router(xiaocan.router, prefix="/api", tags=["xiaocan"])
+app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 
 
 @app.get("/api/health", response_model=HealthCheck, tags=["system"])
