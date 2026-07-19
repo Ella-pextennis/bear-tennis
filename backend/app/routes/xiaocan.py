@@ -172,8 +172,8 @@ def list_xiaocan_rebates() -> XiaocanRebateList:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, settle_date, amount, remark, created_at
-            FROM xiaocan_rebate_settlements
+            SELECT id, settle_date, amount, xiaocan_rebates.remark, created_at
+            FROM xiaocan_rebate_settlements xiaocan_rebates
             ORDER BY settle_date DESC, id DESC
             """
         )
