@@ -1,0 +1,122 @@
+"""MySQL connection helper (PyMySQL, pure Python — no native deps).
+
+Connections are opened lazily per request via get_conn(). init_pool()/close_pool()
+are no-ops preserved for lifespan symmetry with the previous Oracle pool. This means
+the backend boots even when MySQL is unavailable — connection errors surface
+per-request instead of crashing startup.
+"""
+from __future__ import annotations
+
+import logging
+
+import pymysql
+
+from .config import get_settings
+
+logger = logging.getLogger(__name__)
+
+
+def init_pool() -> None:
+    """No-op. MySQL connections are opened lazily per request via get_conn()."""
+    pass
+
+
+def close_pool() -> None:
+    """No-op. Connections are closed per-request in route handlers."""
+    pass
+
+
+def get_conn() -> pymysql.connections.Connection:
+    """Open a new MySQL connection. Caller is responsible for closing it.
+
+    Use as: conn = get_conn(); try: ... finally: conn.close()
+    """
+    settings = get_settings()
+    return pymysql.connect(
+        host=settings.db_host,
+        port=settings.db_port,
+        user=settings.db_user,
+        password=settings.db_password,
+        database=settings.db_database,
+        charset="utf8mb4",
+        autocommit=False,
+    )
+
+
+def _column_exists(cur, table: str, column: str) -> bool:
+    cur.execute(
+        """
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s
+        """,
+        (table, column),
+    )
+    return cur.fetchone() is not None
+
+
+def ensure_schema() -> None:
+    """Idempotent schema migration: add new columns / tables if missing.
+
+    Called once on application startup. Safe to run multiple times.
+    Failures are logged but do not crash startup — per-request errors will surface
+    the actual problem if MySQL is unreachable.
+    """
+    try:
+        conn = get_conn()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ensure_schema: cannot connect to MySQL, skipping migration: %s", e)
+        return
+
+    try:
+        cur = conn.cursor()
+        if not _column_exists(cur, "coffee_orders", "is_xiaocan"):
+            cur.execute("ALTER TABLE coffee_orders ADD COLUMN is_xiaocan TINYINT NOT NULL DEFAULT 0")
+            logger.info("Added column coffee_orders.is_xiaocan")
+        if not _column_exists(cur, "coffee_orders", "updated_at"):
+            cur.execute("ALTER TABLE coffee_orders ADD COLUMN updated_at DATETIME NULL")
+            logger.info("Added column coffee_orders.updated_at")
+        if not _column_exists(cur, "coffee_orders", "platform_order_no"):
+            cur.execute("ALTER TABLE coffee_orders ADD COLUMN platform_order_no VARCHAR(50)")
+            logger.info("Added column coffee_orders.platform_order_no")
+        if not _column_exists(cur, "coffee_orders", "discount_amount"):
+            cur.execute("ALTER TABLE coffee_orders ADD COLUMN discount_amount DECIMAL(12, 2)")
+            logger.info("Added column coffee_orders.discount_amount")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS xiaocan_orders (
+              id                 INT AUTO_INCREMENT PRIMARY KEY,
+              xiaocan_order_no   VARCHAR(50),
+              platform           VARCHAR(50),
+              order_time         DATETIME,
+              platform_order_no  VARCHAR(50),
+              settlement_amount DECIMAL(12, 2),
+              imported_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_xiaocan_platform_order_no (platform_order_no),
+              INDEX idx_xiaocan_order_time (order_time)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS xiaocan_rebate_settlements (
+              id           INT AUTO_INCREMENT PRIMARY KEY,
+              settle_date  DATE NOT NULL,
+              amount       DECIMAL(12, 2) NOT NULL,
+              remark       VARCHAR(500),
+              created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_rebate_settle_date (settle_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        cur.close()
+        conn.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.error("ensure_schema migration failed: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        conn.close()
+
