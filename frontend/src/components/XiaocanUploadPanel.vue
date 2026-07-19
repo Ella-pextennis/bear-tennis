@@ -42,7 +42,7 @@
       </div>
 
       <el-alert
-        v-if="result"
+        v-if="result && result.result"
         :title="successTitle"
         type="success"
         :closable="false"
@@ -50,9 +50,9 @@
         style="margin-top: 10px"
       >
         <div class="result-grid">
-          <span><b>导入行数</b> {{ result.total_rows }}</span>
-          <span><b>匹配原订单</b> {{ result.matched_count }}</span>
-          <span><b>未匹配</b> {{ result.unmatched_count }}</span>
+          <span><b>导入行数</b> {{ result.result.total_rows }}</span>
+          <span><b>匹配原订单</b> {{ result.result.matched_count }}</span>
+          <span><b>未匹配</b> {{ result.result.unmatched_count }}</span>
         </div>
       </el-alert>
 

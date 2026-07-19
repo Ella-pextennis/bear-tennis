@@ -42,7 +42,7 @@
       </div>
 
       <el-alert
-        v-if="result"
+        v-if="result && result.result"
         :title="successTitle"
         type="success"
         :closable="false"
@@ -50,11 +50,11 @@
         style="margin-top: 10px"
       >
         <div class="result-grid">
-          <span><b>导入行数</b> {{ result.total_rows }}</span>
-          <span><b>订单数</b> {{ result.orders_count }}</span>
-          <span><b>门店数</b> {{ result.stores_count }}</span>
-          <span><b>总金额</b> ¥{{ formatAmount(result.total_amount) }}</span>
-          <span v-if="result.skipped_empty_rows"><b>跳过空行</b> {{ result.skipped_empty_rows }}</span>
+          <span><b>导入行数</b> {{ result.result.total_rows }}</span>
+          <span><b>订单数</b> {{ result.result.orders_count }}</span>
+          <span><b>门店数</b> {{ result.result.stores_count }}</span>
+          <span><b>总金额</b> ¥{{ formatAmount(result.result.total_amount) }}</span>
+          <span v-if="result.result.skipped_empty_rows"><b>跳过空行</b> {{ result.result.skipped_empty_rows }}</span>
         </div>
       </el-alert>
 

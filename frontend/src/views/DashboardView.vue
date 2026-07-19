@@ -11,9 +11,9 @@
 
     <StatsCards :stats="stats" :loading="statsLoading" />
 
-    <OrdersTable ref="tableRef" @data-changed="loadStats" />
+    <OrdersTable ref="tableRef" @data-changed="loadDashboard" />
     <XiaocanOrdersTable ref="xiaocanTableRef" @data-changed="onXiaocanDataChanged" />
-    <XiaocanRebatePanel ref="rebateRef" @data-changed="loadStats" />
+    <XiaocanRebatePanel ref="rebateRef" @data-changed="loadDashboard" />
     <DailyTrendChart ref="trendRef" />
     <NaturalTrendChart ref="naturalTrendRef" />
     <ActualReceivedChart ref="actualReceivedRef" />
