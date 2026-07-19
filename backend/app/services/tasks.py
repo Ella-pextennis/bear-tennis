@@ -5,8 +5,7 @@ Frontend polls task status via /api/tasks/{task_id}.
 """
 from __future__ import annotations
 
-import asyncio
-import io
+import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -34,7 +33,7 @@ class TaskInfo:
     message: str = ""
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
-    created_at: float = field(default_factory=lambda: asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0)
+    created_at: float = field(default_factory=lambda: time.time())
 
 
 _tasks: Dict[str, TaskInfo] = {}
