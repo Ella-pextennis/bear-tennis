@@ -59,4 +59,9 @@ def health() -> HealthCheck:
         conn.close()
     except Exception as e:  # noqa: BLE001
         db_status = f"error: {e}"
-    return HealthCheck(status="ok" if db_status == "ok" else "degraded", db=db_status)
+    return HealthCheck(
+        status="ok" if db_status == "ok" else "degraded",
+        db=db_status,
+        version="0.1.0",
+        build_date="2026-07-19",
+    )

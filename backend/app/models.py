@@ -73,6 +73,8 @@ class Stats(BaseModel):
 class HealthCheck(BaseModel):
     status: str
     db: str
+    version: str = "0.1.0"
+    build_date: str = "2026-07-19"
 
 
 class BatchDeleteRequest(BaseModel):

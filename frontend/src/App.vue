@@ -21,13 +21,32 @@
     <main class="app-main">
       <DashboardView />
     </main>
+    <footer class="app-footer">
+      <span>版本 {{ version }}</span>
+      <span>{{ buildDate }}</span>
+    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import DashboardView from './views/DashboardView.vue'
 import WeatherClock from './components/WeatherClock.vue'
 import logoUrl from './assets/logo.jpg'
+import { fetchHealth, type HealthResponse } from './api'
+
+const version = ref('0.1.0')
+const buildDate = ref('2026-07-19')
+
+onMounted(async () => {
+  try {
+    const health: HealthResponse = await fetchHealth()
+    if (health.version) version.value = health.version
+    if (health.build_date) buildDate.value = health.build_date
+  } catch {
+    /* keep default version */
+  }
+})
 </script>
 
 <style>
@@ -95,6 +114,15 @@ body {
   max-width: 1600px;
   width: 100%;
   margin: 0 auto;
+}
+.app-footer {
+  text-align: center;
+  padding: 12px;
+  font-size: 11px;
+  color: #909399;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
 }
 @media (max-width: 720px) {
   .app-header {

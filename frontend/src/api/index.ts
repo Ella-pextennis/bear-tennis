@@ -157,8 +157,15 @@ export async function fetchFilters(): Promise<FilterOptions> {
   return res.data
 }
 
-export async function fetchHealth(): Promise<{ status: string; db: string }> {
-  const res = await client.get('/health')
+export interface HealthResponse {
+  status: string
+  db: string
+  version?: string
+  build_date?: string
+}
+
+export async function fetchHealth(): Promise<HealthResponse> {
+  const res = await client.get<HealthResponse>('/health')
   return res.data
 }
 
