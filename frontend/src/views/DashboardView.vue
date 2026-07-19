@@ -53,6 +53,7 @@ const stats = ref<Stats>({
   xiaocan_orders_count: 0,
   xiaocan_rebate_total: null,
   natural_online_orders: 0,
+  actual_received: null,
 })
 const statsLoading = ref(false)
 const tableRef = ref<InstanceType<typeof OrdersTable> | null>(null)
