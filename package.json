@@ -10,8 +10,9 @@
     "preview:frontend": "cd frontend && npm run preview",
     "install:frontend": "cd frontend && npm install",
     "install:backend": "cd backend && pip install -e .",
+    "install:all": "npm run install:frontend && npm run install:backend",
     "build": "npm run build:frontend",
-    "install": "npm run install:frontend"
+    "install": "npm run install:all"
   },
   "dependencies": {},
   "devDependencies": {}
