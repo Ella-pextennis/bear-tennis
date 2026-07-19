@@ -11,4 +11,25 @@ export default defineConfig({
             },
         },
     },
+    build: {
+        sourcemap: false,
+        minify: 'terser',
+        terserOptions: {
+            compress: {
+                drop_console: true,
+                drop_debugger: true,
+            },
+        },
+        rollupOptions: {
+            output: {
+                manualChunks: function (id) {
+                    if (id.includes('node_modules')) {
+                        return 'vendor';
+                    }
+                },
+            },
+        },
+        reportCompressedSize: false,
+        chunkSizeWarningLimit: 1200,
+    },
 });
