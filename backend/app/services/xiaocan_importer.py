@@ -127,7 +127,7 @@ def _build_record(values: dict[str, Any]) -> dict[str, Any]:
 
 
 def _iter_records(file_bytes: bytes) -> Iterator[dict[str, Any]]:
-    wb = load_workbook(filename=io.BytesIO(file_bytes), read_only=False, data_only=True)
+    wb = load_workbook(filename=io.BytesIO(file_bytes), read_only=True, data_only=True)
     try:
         ws = wb.active
         row_iter = ws.iter_rows(values_only=False)
@@ -155,17 +155,26 @@ def _iter_records(file_bytes: bytes) -> Iterator[dict[str, Any]]:
 def update_xiaocan_marks(conn: Any) -> tuple[int, int]:
     """Recompute coffee_orders.is_xiaocan by matching against xiaocan_orders.
 
-    Step 1: reset all is_xiaocan to 0.
-    Step 2: set is_xiaocan=1 and updated_at=NOW() where coffee_orders.platform_order_no
-            matches the xiaocan order's platform_order_no, falling back to xiaocan_order_no
-            (the "小蚕订单编号" column IS the platform order number in the current Excel format).
+    Efficient approach:
+    Step 1: Reset is_xiaocan=0 only for rows that were matched but no longer have a match
+    Step 2: Set is_xiaocan=1 only for rows that now have a match (using index on platform_order_no)
+    Step 3: Count unmatched xiaocan_orders rows
 
-    Returns (matched_count, unmatched_count) where unmatched is the count of
-    xiaocan_orders rows that did not match any coffee_orders row.
+    Returns (matched_count, unmatched_count).
     """
     cur = conn.cursor()
     try:
-        cur.execute("UPDATE coffee_orders SET is_xiaocan = 0")
+        cur.execute(
+            """
+            UPDATE coffee_orders co
+            SET co.is_xiaocan = 0, co.updated_at = NOW()
+            WHERE co.is_xiaocan = 1
+              AND NOT EXISTS (
+                SELECT 1 FROM xiaocan_orders xo
+                WHERE co.platform_order_no = COALESCE(NULLIF(TRIM(xo.platform_order_no), ''), xo.xiaocan_order_no)
+              )
+            """
+        )
 
         cur.execute(
             """
@@ -174,12 +183,12 @@ def update_xiaocan_marks(conn: Any) -> tuple[int, int]:
               ON co.platform_order_no = COALESCE(NULLIF(TRIM(xo.platform_order_no), ''), xo.xiaocan_order_no)
             SET co.is_xiaocan = 1,
                 co.updated_at = NOW()
-            WHERE COALESCE(NULLIF(TRIM(xo.platform_order_no), ''), xo.xiaocan_order_no) IS NOT NULL
+            WHERE co.is_xiaocan = 0
+              AND COALESCE(NULLIF(TRIM(xo.platform_order_no), ''), xo.xiaocan_order_no) IS NOT NULL
             """
         )
         matched_count = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
 
-        # Count xiaocan rows that did NOT match (for reporting)
         cur.execute(
             """
             SELECT COUNT(*) FROM xiaocan_orders xo
@@ -204,7 +213,7 @@ def import_xiaocan_excel(conn: Any, file_bytes: bytes) -> XiaocanImportResult:
     cursor = conn.cursor()
     total_rows = 0
     batch: list[dict[str, Any]] = []
-    BATCH_SIZE = 200
+    BATCH_SIZE = 500
 
     try:
         cursor.execute("TRUNCATE TABLE xiaocan_orders")

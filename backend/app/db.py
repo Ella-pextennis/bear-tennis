@@ -80,6 +80,44 @@ def ensure_schema() -> None:
 
     try:
         cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS coffee_orders (
+              id                 INT AUTO_INCREMENT PRIMARY KEY,
+              order_no           VARCHAR(100),
+              order_date         DATETIME,
+              store_name         VARCHAR(100),
+              queue_no           VARCHAR(50),
+              order_source       VARCHAR(50),
+              delivery_method    VARCHAR(50),
+              status             VARCHAR(50),
+              payment_method     VARCHAR(50),
+              member_no          VARCHAR(50),
+              customer_name      VARCHAR(100),
+              phone              VARCHAR(20),
+              address            VARCHAR(500),
+              product_name       VARCHAR(200),
+              flavor_group       VARCHAR(50),
+              unit_price         DECIMAL(12, 2),
+              quantity           DECIMAL(12, 2),
+              amount             DECIMAL(12, 2),
+              remark             VARCHAR(500),
+              logistics_no       VARCHAR(100),
+              weight             VARCHAR(50),
+              is_order_header    TINYINT NOT NULL DEFAULT 0,
+              platform_order_no  VARCHAR(50),
+              discount_amount    DECIMAL(12, 2),
+              is_xiaocan         TINYINT NOT NULL DEFAULT 0,
+              updated_at         DATETIME NULL,
+              imported_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_order_header_date (is_order_header, order_date),
+              INDEX idx_order_source (is_order_header, order_source),
+              INDEX idx_member_no (is_order_header, member_no),
+              INDEX idx_platform_order_no (platform_order_no),
+              INDEX idx_is_xiaocan (is_xiaocan)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
         if not _column_exists(cur, "coffee_orders", "is_xiaocan"):
             cur.execute("ALTER TABLE coffee_orders ADD COLUMN is_xiaocan TINYINT NOT NULL DEFAULT 0")
             logger.info("Added column coffee_orders.is_xiaocan")

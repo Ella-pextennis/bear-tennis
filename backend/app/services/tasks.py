@@ -84,21 +84,26 @@ def _run_xiaocan_import(task_id: str, file_bytes: bytes) -> None:
     if not task:
         return
     task.status = TaskStatus.RUNNING
-    task.progress = 10.0
+    task.progress = 5.0
     task.message = "开始解析小蚕订单 Excel..."
 
     try:
-        task.progress = 30.0
-        task.message = "解析完成，开始导入数据库..."
+        task.progress = 25.0
+        task.message = "解析完成，准备导入..."
 
         conn = get_conn()
         try:
+            task.progress = 30.0
+            task.message = "导入小蚕订单数据..."
             result = import_xiaocan_excel(conn, file_bytes)
         except Exception:
             conn.rollback()
             raise
         finally:
             conn.close()
+
+        task.progress = 85.0
+        task.message = "匹配订单关联..."
 
         task.progress = 100.0
         task.status = TaskStatus.SUCCESS
